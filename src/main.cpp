@@ -30,14 +30,10 @@
 TaskHandle_t task0;
 TaskHandle_t task1;
 
-const char *ssid = "cpciot1";
-const char *password = "10987654";
-const char *mqtt_server = "10.10.200.70";
-const int mqtt_port = 1883;
-/*const char *ssid = "true_home2G_UM3";
-const char *password = "Kk67Dc54";
-const char *mqtt_server = "192.168.1.54";
-const int mqtt_port = 11883;*/
+const char *ssid = "MERCUSYS_7363";
+const char *password = "Home351Home351";
+const char *mqtt_server = "soldier.cloudmqtt.com";
+const int mqtt_port = 11992;
 String clientId = "";
 String deviceTopic = "";
 float voltage, current, power, energy, frequency;
@@ -70,33 +66,14 @@ void setup()
 {
     Serial.begin(115200);
     WiFi.setAutoReconnect(true);
-    //clientId = "airconController4";
-    //deviceTopic = "myFinalProject/airconController4/";
-    if (WiFi.macAddress() == "F0:08:D1:D7:6D:F8")
-    {
-        clientId = "airconController3";
-        deviceTopic = "myFinalProject/airconController3/";
-    }
-    if (WiFi.macAddress() == "8C:AA:B5:93:69:34")
-    {
-        clientId = "airconController2";
-        deviceTopic = "myFinalProject/airconController2/";
-    }
-    if (WiFi.macAddress() == "8C:AA:B5:94:1E:5C")
-    {
-        clientId = "airconController1";
-        deviceTopic = "myFinalProject/airconController1/";
-    }
 
-    //EEPROM.begin(1);
+    clientId = "airconController4";
+    deviceTopic = "myFinalProject/airconController4/";
+
     pinMode(LED_BUILTIN, OUTPUT);
     pinMode(25, OUTPUT);
     digitalWrite(25, LOW);
     ledBlink(50, 1000);
-    bootCount = EEPROM.read(0);
-    bootCount++;
-    //EEPROM.write(0, bootCount);
-    //EEPROM.commit();
 
     setup_wifi();
     client.begin(mqtt_server, mqtt_port, espClient);
