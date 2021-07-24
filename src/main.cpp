@@ -18,6 +18,15 @@
 #include <ArduinoJson.h>
 #include <EEPROM.h>
 
+#if !defined(PZEM_RX_PIN) && !defined(PZEM_TX_PIN)
+#define PZEM_RX_PIN 16
+#define PZEM_TX_PIN 17
+#endif
+
+#if !defined(PZEM_SERIAL)
+#define PZEM_SERIAL Serial2
+#endif
+
 TaskHandle_t task0;
 TaskHandle_t task1;
 
@@ -50,7 +59,7 @@ void handle_ota(void *parameter);
 void handle_mqtt(void *parameter);
 void ledBlink(int interval, int delaytime);
 
-PZEM004Tv30 pzem(&Serial2);
+PZEM004Tv30 pzem(PZEM_SERIAL, PZEM_RX_PIN, PZEM_TX_PIN);
 WiFiClient espClient;
 MQTTClient client(1024);
 DynamicJsonDocument electricalVariableJsonDoc(electricalVariableJsonSize);
