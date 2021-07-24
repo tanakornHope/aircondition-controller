@@ -36,6 +36,8 @@ const char *mqtt_server = "soldier.cloudmqtt.com";
 const int mqtt_port = 11992;
 String clientId = "";
 String deviceTopic = "";
+String mqttUserName = "hrvmbcju";
+String mqttPassword = "g7usW2NJz0H_";
 float voltage, current, power, energy, frequency;
 int ledState = LOW, bootCount = 0, pzemErrorCount = 0, mqttReconnectCount = 0, wifiReconnectCount = 0;
 bool cmdFromServer = false, serverIsOnline = false;
@@ -270,7 +272,7 @@ void on_message(String &topic, String &payload)
 
 void mqtt_connect()
 {
-    if (client.connect(clientId.c_str(), "admin", "5617091"))
+    if (client.connect(clientId.c_str(), mqttUserName, mqttPassword))
     {
         devicePropertiesJsonDoc["wifiLocalIP"] = WiFi.localIP().toString().c_str();
         devicePropertiesJsonDoc["online"] = true;
