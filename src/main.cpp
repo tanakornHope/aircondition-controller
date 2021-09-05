@@ -396,7 +396,7 @@ void handle_sendingTelemetry(void *parameter)
         xSemaphoreTake(sendingTelemetrySemaphoreHandle, portMAX_DELAY);
         client.publish((deviceTopic + "measure").c_str(), electricalVariableJsonOutput, false, 0);
         http.addHeader("accept", "application/json"); //Specify content-type header
-        http.addHeader("Authorization", "Bearer 997a5327-fd20-4730-8485-47e187fbb52f");
+        http.addHeader("Authorization", "Bearer x-x-x-x-x");
         http.addHeader("Content-Type", "application/json");
         http.POST(electricalVariableJsonOutput);
         Serial.println("Send Telemetry Data.");
