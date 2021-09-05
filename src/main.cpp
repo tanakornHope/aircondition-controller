@@ -157,22 +157,22 @@ void setup()
         0                         // Core you want to run the task on (0 or 1)
     );
     xTaskCreatePinnedToCore(
-        &handle_readPzem,             // Function that should be called
+        &handle_readPzem,      // Function that should be called
         "Handle reading PZEM", // Name of the task (for debugging)
-        8096,                     // Stack size (bytes)
-        NULL,                     // Parameter to pass
-        3,                        // Task priority
-        &task2,                   // Task handle
-        0                         // Core you want to run the task on (0 or 1)
+        8096,                  // Stack size (bytes)
+        NULL,                  // Parameter to pass
+        3,                     // Task priority
+        &task2,                // Task handle
+        1                      // Core you want to run the task on (0 or 1)
     );
     xTaskCreatePinnedToCore(
-        &handle_sendingTelemetry,             // Function that should be called
+        &handle_sendingTelemetry,         // Function that should be called
         "Handle sending telemetry data.", // Name of the task (for debugging)
-        8096,                     // Stack size (bytes)
-        NULL,                     // Parameter to pass
-        4,                        // Task priority
-        &task3,                   // Task handle
-        0                         // Core you want to run the task on (0 or 1)
+        8096,                             // Stack size (bytes)
+        NULL,                             // Parameter to pass
+        4,                                // Task priority
+        &task3,                           // Task handle
+        1                                 // Core you want to run the task on (0 or 1)
     );
 }
 
@@ -392,6 +392,7 @@ void handle_sendingTelemetry(void *parameter)
     {
         xSemaphoreTake(sendingTelemetrySemaphoreHandle, portMAX_DELAY);
         client.publish((deviceTopic + "measure").c_str(), electricalVariableJsonOutput, false, 0);
+        Serial.println("Send Telemetry Data.");
         xSemaphoreGive(readPzemSemaphoreHandle);
     }
 }
@@ -411,6 +412,10 @@ void handle_mqtt(void *parameter)
     while (true)
     {
         client.loop();
+        while (!client.connected())
+        {
+            mqtt_connect();
+        }
         delay(100);
     }
 }
