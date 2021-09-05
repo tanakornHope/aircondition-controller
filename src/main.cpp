@@ -29,6 +29,8 @@
 
 TaskHandle_t task0;
 TaskHandle_t task1;
+TaskHandle_t task2;
+TaskHandle_t task3;
 
 const char *ssid = "MERCUSYS_7363";
 const char *password = "Home351Home351";
@@ -36,8 +38,8 @@ const char *mqtt_server = "soldier.cloudmqtt.com";
 const int mqtt_port = 11992;
 String clientId = "";
 String deviceTopic = "";
-const char* mqttUserName = "hrvmbcju";
-const char* mqttPassword = "g7usW2NJz0H_";
+const char *mqttUserName = "hrvmbcju";
+const char *mqttPassword = "g7usW2NJz0H_";
 float voltage, current, power, energy, frequency;
 int ledState = LOW, bootCount = 0, pzemErrorCount = 0, mqttReconnectCount = 0, wifiReconnectCount = 0;
 bool cmdFromServer = false, serverIsOnline = false;
@@ -56,13 +58,16 @@ void getPzem();
 void handle_ota(void *parameter);
 void handle_mqtt(void *parameter);
 void ledBlink(int interval, int delaytime);
+void handle_readPzem(void *parameter);
+void handle_sendingTelemetry(void *parameter);
 
 PZEM004Tv30 pzem(PZEM_SERIAL, PZEM_RX_PIN, PZEM_TX_PIN);
 WiFiClient espClient;
 MQTTClient client(1024);
 DynamicJsonDocument electricalVariableJsonDoc(electricalVariableJsonSize);
 DynamicJsonDocument devicePropertiesJsonDoc(devicePropertiesJsonSize);
-SemaphoreHandle_t binarySemaphores[2] = {NULL, NULL};
+SemaphoreHandle_t readPzemSemaphoreHandle;
+SemaphoreHandle_t sendingTelemetrySemaphoreHandle;
 
 void setup()
 {
@@ -89,12 +94,10 @@ void setup()
     client.setWill((deviceTopic + "properties").c_str(), devicePropertiesJsonOutput, true, 2);
     mqtt_connect();
 
-    for (int i = 0; i < 2; i++)
-    {
-        binarySemaphores[i] = xSemaphoreCreateBinary(); // create a binary semaphore
-    }
-    xSemaphoreGive(binarySemaphores[0]);
-    xSemaphoreGive(binarySemaphores[1]);
+    readPzemSemaphoreHandle = xSemaphoreCreateBinary();
+    sendingTelemetrySemaphoreHandle = xSemaphoreCreateBinary();
+    xSemaphoreGive(readPzemSemaphoreHandle);
+    // xSemaphoreGive(sendingTelemetrySemaphoreHandle);
 
     electricalVariableJsonDoc["voltage"] = "null";
     electricalVariableJsonDoc["current"] = "null";
@@ -103,35 +106,35 @@ void setup()
     electricalVariableJsonDoc["frequency"] = "null";
 
     //pzem.resetEnergy();
-    ArduinoOTA.onStart([]() {
-                  String type;
-                  if (ArduinoOTA.getCommand() == U_FLASH)
-                      type = "sketch";
-                  else // U_SPIFFS
-                      type = "filesystem";
+    ArduinoOTA.onStart([]()
+                       {
+                           String type;
+                           if (ArduinoOTA.getCommand() == U_FLASH)
+                               type = "sketch";
+                           else // U_SPIFFS
+                               type = "filesystem";
 
-                  // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-                  Serial.println("Start updating " + type);
-              })
-        .onEnd([]() {
-            Serial.println("\nEnd");
-        })
-        .onProgress([](unsigned int progress, unsigned int total) {
-            Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-        })
-        .onError([](ota_error_t error) {
-            Serial.printf("Error[%u]: ", error);
-            if (error == OTA_AUTH_ERROR)
-                Serial.println("Auth Failed");
-            else if (error == OTA_BEGIN_ERROR)
-                Serial.println("Begin Failed");
-            else if (error == OTA_CONNECT_ERROR)
-                Serial.println("Connect Failed");
-            else if (error == OTA_RECEIVE_ERROR)
-                Serial.println("Receive Failed");
-            else if (error == OTA_END_ERROR)
-                Serial.println("End Failed");
-        });
+                           // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+                           Serial.println("Start updating " + type);
+                       })
+        .onEnd([]()
+               { Serial.println("\nEnd"); })
+        .onProgress([](unsigned int progress, unsigned int total)
+                    { Serial.printf("Progress: %u%%\r", (progress / (total / 100))); })
+        .onError([](ota_error_t error)
+                 {
+                     Serial.printf("Error[%u]: ", error);
+                     if (error == OTA_AUTH_ERROR)
+                         Serial.println("Auth Failed");
+                     else if (error == OTA_BEGIN_ERROR)
+                         Serial.println("Begin Failed");
+                     else if (error == OTA_CONNECT_ERROR)
+                         Serial.println("Connect Failed");
+                     else if (error == OTA_RECEIVE_ERROR)
+                         Serial.println("Receive Failed");
+                     else if (error == OTA_END_ERROR)
+                         Serial.println("End Failed");
+                 });
 
     ArduinoOTA.begin();
 
@@ -140,8 +143,8 @@ void setup()
         "Handle ota upload", // Name of the task (for debugging)
         8096,                // Stack size (bytes)
         NULL,                // Parameter to pass
-        2,                   // Task priority
-        &task0,                // Task handle
+        1,                   // Task priority
+        &task0,              // Task handle
         0                    // Core you want to run the task on (0 or 1)
     );
     xTaskCreatePinnedToCore(
@@ -149,15 +152,33 @@ void setup()
         "Handle mqtt connection", // Name of the task (for debugging)
         8096,                     // Stack size (bytes)
         NULL,                     // Parameter to pass
-        1,                        // Task priority
-        &task1,                     // Task handle
-        1                         // Core you want to run the task on (0 or 1)
+        2,                        // Task priority
+        &task1,                   // Task handle
+        0                         // Core you want to run the task on (0 or 1)
+    );
+    xTaskCreatePinnedToCore(
+        &handle_readPzem,             // Function that should be called
+        "Handle reading PZEM", // Name of the task (for debugging)
+        8096,                     // Stack size (bytes)
+        NULL,                     // Parameter to pass
+        3,                        // Task priority
+        &task2,                   // Task handle
+        0                         // Core you want to run the task on (0 or 1)
+    );
+    xTaskCreatePinnedToCore(
+        &handle_sendingTelemetry,             // Function that should be called
+        "Handle sending telemetry data.", // Name of the task (for debugging)
+        8096,                     // Stack size (bytes)
+        NULL,                     // Parameter to pass
+        4,                        // Task priority
+        &task3,                   // Task handle
+        0                         // Core you want to run the task on (0 or 1)
     );
 }
 
 void loop()
 {
-    getPzem();
+    /* getPzem();
     ledBlink(1000, 2000);
     if (Serial2.available() != 0)
     {
@@ -187,8 +208,7 @@ void loop()
     else if(serverIsOnline == false)
     {
         digitalWrite(25, LOW);
-    }
-    //taskYIELD();
+    } */
 }
 
 void setup_wifi()
@@ -203,10 +223,11 @@ void setup_wifi()
     while (WiFi.status() != WL_CONNECTED)
     {
         wifiReconnectCount++;
-        Serial.printf("(setup_wifi)Reconnect Count: %d\n",wifiReconnectCount);
+        Serial.printf("(setup_wifi)Reconnect Count: %d\n", wifiReconnectCount);
         delay(500);
         Serial.print(".");
-        if(wifiReconnectCount == 120){
+        if (wifiReconnectCount == 120)
+        {
             ESP.restart();
         }
     }
@@ -293,7 +314,8 @@ void mqtt_connect()
         mqttReconnectCount++;
         Serial.printf("MQTT error code: %d, return code: %d\n", client.lastError(), client.returnCode());
         Serial.println("Attempting MQTT connection");
-        if(mqttReconnectCount == 60){
+        if (mqttReconnectCount == 60)
+        {
             ESP.restart();
         }
         digitalWrite(25, LOW);
@@ -303,69 +325,83 @@ void mqtt_connect()
     }
 }
 
-void getPzem()
+void handle_readPzem(void *parameter)
 {
-    voltage = pzem.voltage();
-    if (!isnan(voltage))
+    while (true)
     {
-        electricalVariableJsonDoc["voltage"] = voltage;
-    }
-    else
-    {
-        electricalVariableJsonDoc["voltage"] = 0.0;
-    }
+        xSemaphoreTake(readPzemSemaphoreHandle, portMAX_DELAY);
+        voltage = pzem.voltage();
+        if (!isnan(voltage))
+        {
+            electricalVariableJsonDoc["voltage"] = voltage;
+        }
+        else
+        {
+            electricalVariableJsonDoc["voltage"] = 0.0;
+        }
 
-    current = pzem.current();
-    if (!isnan(current))
-    {
-        electricalVariableJsonDoc["current"] = current;
-    }
-    else
-    {
-        electricalVariableJsonDoc["current"] = 0.0;
-    }
+        current = pzem.current();
+        if (!isnan(current))
+        {
+            electricalVariableJsonDoc["current"] = current;
+        }
+        else
+        {
+            electricalVariableJsonDoc["current"] = 0.0;
+        }
 
-    power = pzem.power();
-    if (!isnan(power))
-    {
-        electricalVariableJsonDoc["power"] = power;
-    }
-    else
-    {
-        electricalVariableJsonDoc["power"] = 0.0;
-    }
+        power = pzem.power();
+        if (!isnan(power))
+        {
+            electricalVariableJsonDoc["power"] = power;
+        }
+        else
+        {
+            electricalVariableJsonDoc["power"] = 0.0;
+        }
 
-    energy = pzem.energy();
-    if (!isnan(energy))
-    {
-        electricalVariableJsonDoc["energy"] = energy;
-    }
-    else
-    {
-        electricalVariableJsonDoc["energy"] = 0.0;
-    }
+        energy = pzem.energy();
+        if (!isnan(energy))
+        {
+            electricalVariableJsonDoc["energy"] = energy;
+        }
+        else
+        {
+            electricalVariableJsonDoc["energy"] = 0.0;
+        }
 
-    frequency = pzem.frequency();
-    if (!isnan(frequency))
-    {
-        electricalVariableJsonDoc["frequency"] = frequency;
-    }
-    else
-    {
-        electricalVariableJsonDoc["frequency"] = 0.0;
-    }
+        frequency = pzem.frequency();
+        if (!isnan(frequency))
+        {
+            electricalVariableJsonDoc["frequency"] = frequency;
+        }
+        else
+        {
+            electricalVariableJsonDoc["frequency"] = 0.0;
+        }
 
-    serializeJson(electricalVariableJsonDoc, electricalVariableJsonOutput);
-    client.publish((deviceTopic + "measure").c_str(), electricalVariableJsonOutput, false, 0);
+        serializeJson(electricalVariableJsonDoc, electricalVariableJsonOutput);
+        ledBlink(1000, 2000);
+        xSemaphoreGive(sendingTelemetrySemaphoreHandle);
+    }
+}
+
+void handle_sendingTelemetry(void *parameter)
+{
+    while (true)
+    {
+        xSemaphoreTake(sendingTelemetrySemaphoreHandle, portMAX_DELAY);
+        client.publish((deviceTopic + "measure").c_str(), electricalVariableJsonOutput, false, 0);
+        xSemaphoreGive(readPzemSemaphoreHandle);
+    }
 }
 
 void handle_ota(void *parameter)
 {
     while (true)
     {
-        xSemaphoreTake(binarySemaphores[0], portMAX_DELAY);
         ArduinoOTA.handle();
-        xSemaphoreGive(binarySemaphores[1]);
+        delay(100);
     }
 }
 
@@ -374,9 +410,8 @@ void handle_mqtt(void *parameter)
     //vTaskDelay(3000);
     while (true)
     {
-        xSemaphoreTake(binarySemaphores[1], portMAX_DELAY);
         client.loop();
-        xSemaphoreGive(binarySemaphores[0]);
+        delay(100);
     }
 }
 
