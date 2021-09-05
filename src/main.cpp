@@ -17,6 +17,7 @@
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
 #include <EEPROM.h>
+#include <HTTPClient.h>
 
 #if !defined(PZEM_RX_PIN) && !defined(PZEM_TX_PIN)
 #define PZEM_RX_PIN 16
@@ -68,6 +69,7 @@ DynamicJsonDocument electricalVariableJsonDoc(electricalVariableJsonSize);
 DynamicJsonDocument devicePropertiesJsonDoc(devicePropertiesJsonSize);
 SemaphoreHandle_t readPzemSemaphoreHandle;
 SemaphoreHandle_t sendingTelemetrySemaphoreHandle;
+HTTPClient http;
 
 void setup()
 {
@@ -84,6 +86,7 @@ void setup()
 
     setup_wifi();
     client.begin(mqtt_server, mqtt_port, espClient);
+    http.begin("https://mg-iot.siamimo.com/asgardhttpv2/api/v2/things/report");
     client.onMessage(on_message);
 
     devicePropertiesJsonDoc["wifiLocalIP"] = WiFi.localIP().toString().c_str();
@@ -381,7 +384,7 @@ void handle_readPzem(void *parameter)
         }
 
         serializeJson(electricalVariableJsonDoc, electricalVariableJsonOutput);
-        ledBlink(1000, 2000);
+        ledBlink(1000, 5000);
         xSemaphoreGive(sendingTelemetrySemaphoreHandle);
     }
 }
@@ -392,6 +395,10 @@ void handle_sendingTelemetry(void *parameter)
     {
         xSemaphoreTake(sendingTelemetrySemaphoreHandle, portMAX_DELAY);
         client.publish((deviceTopic + "measure").c_str(), electricalVariableJsonOutput, false, 0);
+        http.addHeader("accept", "application/json"); //Specify content-type header
+        http.addHeader("Authorization", "Bearer 997a5327-fd20-4730-8485-47e187fbb52f");
+        http.addHeader("Content-Type", "application/json");
+        http.POST(electricalVariableJsonOutput);
         Serial.println("Send Telemetry Data.");
         xSemaphoreGive(readPzemSemaphoreHandle);
     }
@@ -408,7 +415,6 @@ void handle_ota(void *parameter)
 
 void handle_mqtt(void *parameter)
 {
-    //vTaskDelay(3000);
     while (true)
     {
         client.loop();
